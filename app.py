@@ -16,7 +16,7 @@ from google.oauth2.service_account import Credentials
 import requests
 
 # --- CONFIGURAÇÕES GERAIS ---
-st.set_page_config(page_title="Canada Bank - Login", layout="wide")
+st.set_page_config(page_title="Canada Bank", layout="wide")
 
 # ==========================================
 # ☁️ CONEXÃO COM O GOOGLE SHEETS
@@ -82,13 +82,12 @@ def enviar_email_recuperacao(destinatario, nova_senha, nome_usuario):
 # 🌄 CONFIGURAÇÃO DE IMAGENS DE FUNDO
 # ==========================================
 imagens_canada = [
-    "https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000", # Moraine Lake
-    "https://images.unsplash.com/photo-1503614472-8c93d56e92ce?q=80&w=2000", # Montanhas Rochosas
-    "https://images.unsplash.com/photo-1534067783941-51c9c236306c?q=80&w=2000", # Vancouver Skyline
-    "https://images.unsplash.com/photo-1580060839134-75a5edca2e27?q=80&w=2000", # Toronto CN Tower
-    "https://images.unsplash.com/photo-1523633589114-88eaf4b4f1a8?q=80&w=2000"  # Estrada no Outono
+    "https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000",
+    "https://images.unsplash.com/photo-1503614472-8c93d56e92ce?q=80&w=2000",
+    "https://images.unsplash.com/photo-1534067783941-51c9c236306c?q=80&w=2000",
+    "https://images.unsplash.com/photo-1580060839134-75a5edca2e27?q=80&w=2000",
+    "https://images.unsplash.com/photo-1523633589114-88eaf4b4f1a8?q=80&w=2000"
 ]
-# Escolhe uma imagem aleatória a cada carregamento
 imagem_fundo = random.choice(imagens_canada)
 
 st.markdown(f"""
@@ -143,7 +142,7 @@ if not st.session_state["autenticado"]:
 
         with tab_recuperar:
             st.markdown("<h4 style='color: white;'>Recuperar Acesso</h4>", unsafe_allow_html=True)
-            st.info("Digite seu usuário. Uma nova senha será gerada e enviada para o seu e-mail cadastrado.")
+            st.info("Digite seu usuário. Uma nova senha será gerada e enviada para o seu e-mail.")
             rec_user_input = st.text_input("Seu Usuário (caique ou regiane)").strip().lower()
             
             if st.button("Enviar nova senha", use_container_width=True):
@@ -160,9 +159,9 @@ if not st.session_state["autenticado"]:
                     if sucesso:
                         st.success(f"Nova senha enviada para: {email_destino}")
                     else:
-                        st.error("Erro no envio do email. Verifique a senha de app do Gmail no secrets.toml.")
+                        st.error("Erro no envio do email. Verifique as configurações.")
                 else:
-                    st.error("Usuário não encontrado no banco de dados.")
+                    st.error("Usuário não encontrado.")
     st.stop()
 
 # ==========================================
@@ -198,9 +197,9 @@ def obter_cotacao_viva():
 
 def buscar_noticias_canada():
     try:
-        # Disfarça o navegador para evitar bloqueio
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        resposta = requests.get("https://www.cbc.ca/cmlink/rss-canada", headers=headers, timeout=5)
+        # NOVO FEED: Global News Canada
+        resposta = requests.get("https://globalnews.ca/canada/feed/", headers=headers, timeout=5)
         feed = feedparser.parse(resposta.content)
         return feed.entries[:5]
     except: 
@@ -391,18 +390,18 @@ with tabs[5]:
 
 # --- NOTÍCIAS NO FINAL ---
 st.divider()
-st.subheader("📰 Últimas Notícias do Canadá (CBC)")
+st.subheader("📰 Últimas Notícias do Canadá (Global News)")
 
 noticias = buscar_noticias_canada()
 
 if noticias:
     for n in noticias:
+        # Pega os primeiros 16 caracteres da data de publicação para ficar limpo
         data_pub = n.get('published', '')[0:16]
         
-        # 👇 ADICIONADO O referrerpolicy='no-referrer' 👇
         st.markdown(f"""
         <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #d13639;'>
-            <a href='{n.link}' target='_blank' rel='noopener noreferrer' referrerpolicy='no-referrer' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
+            <a href='{n.link}' target='_blank' rel='noopener noreferrer' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
                 {n.title}
             </a>
             <br>
