@@ -13,6 +13,7 @@ import random
 import string
 import gspread
 from google.oauth2.service_account import Credentials
+import requests
 
 # --- CONFIGURAÇÕES GERAIS ---
 st.set_page_config(page_title="Canada Bank - Login", layout="wide")
@@ -21,7 +22,7 @@ st.set_page_config(page_title="Canada Bank - Login", layout="wide")
 # ☁️ CONEXÃO COM O GOOGLE SHEETS
 # ==========================================
 # 👇 COLE O LINK DA SUA PLANILHA AQUI 👇
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1UpxDZA4Bfio0kzfmcFuyAzhPIrRoOQBMA7B5a2soHOo/edit?gid=192070036#gid=192070036COLE_O_LINK_DA_PLANILHA_AQUI"
+URL_PLANILHA = "COLE_O_LINK_DA_PLANILHA_AQUI"
 
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -41,7 +42,6 @@ def get_df(aba, colunas_padrao):
     try:
         ws = sh.worksheet(aba)
     except gspread.exceptions.WorksheetNotFound:
-        # Se a aba não existir, o bot cria sozinho!
         ws = sh.add_worksheet(title=aba, rows=100, cols=20)
         ws.append_row(colunas_padrao)
     
@@ -53,7 +53,7 @@ def get_df(aba, colunas_padrao):
 def save_df(aba, df):
     ws = sh.worksheet(aba)
     ws.clear()
-    df = df.fillna("") # Planilhas não aceitam campos nulos do pandas
+    df = df.fillna("")
     df_str = df.astype(str)
     data_to_update = [df_str.columns.values.tolist()] + df_str.values.tolist()
     ws.update(values=data_to_update, range_name="A1")
@@ -81,18 +81,16 @@ def enviar_email_recuperacao(destinatario, nova_senha, nome_usuario):
 # ==========================================
 # 🛡️ TELA DE LOGIN E CARREGAMENTO DE BANCO
 # ==========================================
-# CARREGANDO BANCO DE USUÁRIOS DO GOOGLE SHEETS
 df_users = get_df("Usuarios", ["Usuario", "Senha", "Email"])
 
-# Se for a primeira vez, cria vocês dois automaticamente
 if df_users.empty:
     df_users = pd.DataFrame([
-        {"Usuario": "Caique", "Senha": "123", "Email": "caiqueviniciustf@gmail.com"},
-        {"Usuario": "Regiane", "Senha": "123", "Email": "regianevdevieira@gmail.com"}
+        {"Usuario": "caique", "Senha": "123", "Email": "caiqueviniciustf@gmail.com"},
+        {"Usuario": "regiane", "Senha": "123", "Email": "regianevdevieira@gmail.com"}
     ])
     save_df("Usuarios", df_users)
 
-df_users['Senha'] = df_users['Senha'].astype(str) # Força a leitura como texto (resolve o bug do "123")
+df_users['Senha'] = df_users['Senha'].astype(str)
 
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -138,7 +136,7 @@ if not st.session_state["autenticado"]:
                     nova_senha_gerada = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
                     
                     df_users.loc[df_users['Usuario'].str.lower() == rec_user_input, 'Senha'] = nova_senha_gerada
-                    save_df("Usuarios", df_users) # Salva a nova senha na nuvem
+                    save_df("Usuarios", df_users)
                     
                     sucesso = enviar_email_recuperacao(email_destino, nova_senha_gerada, rec_user_input.capitalize())
                     if sucesso:
@@ -152,8 +150,6 @@ if not st.session_state["autenticado"]:
 # ==========================================
 # 🍁 APLICATIVO PRINCIPAL (LOGADO)
 # ==========================================
-
-# Buscando e limpando os dados da nuvem
 df_t = get_df("Transacoes", ["ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo"])
 if not df_t.empty:
     df_t['ID'] = pd.to_numeric(df_t['ID'], errors='coerce').fillna(0).astype(int)
@@ -184,9 +180,12 @@ def obter_cotacao_viva():
 
 def buscar_noticias_canada():
     try:
-        feed = feedparser.parse("https://www.cbc.ca/cmlink/rss-canada")
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        resposta = requests.get("https://www.cbc.ca/cmlink/rss-canada", headers=headers, timeout=5)
+        feed = feedparser.parse(resposta.content)
         return feed.entries[:5]
-    except: return []
+    except: 
+        return []
 
 def gerar_calendario_html(ano, mes, data_viagem):
     meses_pt = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
@@ -208,14 +207,23 @@ def gerar_calendario_html(ano, mes, data_viagem):
 
 cotacao_cad_brl = obter_cotacao_viva()
 
-# Título customizado com botão de Sair
+st.markdown("""
+    <style>
+    .stApp { 
+        background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), 
+                    url("https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000"); 
+        background-size: cover; background-attachment: fixed;
+    }
+    h1, h2, h3, p, label { color: white !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
 col_t1, col_t2 = st.columns([5, 1])
 with col_t1: st.title(f"🇨🇦 Canada Bank | Olá, {st.session_state['usuario_logado']}!")
 with col_t2:
     if st.button("🚪 Sair", use_container_width=True):
         st.session_state["autenticado"] = False; st.rerun()
 
-# --- MÉTRICAS ---
 entradas = df_t[df_t['Tipo'].isin(['Entrada', 'Juros / Rendimento', 'Aporte Poupança'])]['Valor'].sum() if not df_t.empty else 0
 saidas = df_t[df_t['Tipo'] == 'Saída']['Valor'].sum() if not df_t.empty else 0
 saldo_brl = entradas - saidas
@@ -230,7 +238,6 @@ m4.metric("📈 1 CAD hoje", f"R$ {cotacao_cad_brl:.2f}")
 
 tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "💳 Cartões", "🏦 Contas", "👤 Perfil / Extrato"])
 
-# --- TAB 1: SAÚDE FINANCEIRA ---
 with tabs[0]:
     st.subheader("Tendência do Patrimônio")
     if not df_t.empty:
@@ -241,7 +248,6 @@ with tabs[0]:
         fig_trend.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
         st.plotly_chart(fig_trend, use_container_width=True)
 
-# --- TAB 2: LANÇAR ---
 with tabs[1]:
     with st.form("form_lan"):
         st.subheader("Lançamento Mensal")
@@ -259,7 +265,6 @@ with tabs[1]:
             save_df("Transacoes", df_atualizado)
             st.rerun()
 
-# --- TAB 3: PLANEJAMENTO CANADÁ ---
 with tabs[2]:
     st.header("🇨🇦 Planejamento")
     col_lan, col_cal = st.columns([2, 1])
@@ -303,7 +308,6 @@ with tabs[2]:
     st.subheader(f"Progresso: {prog_p*100:.1f}%")
     st.progress(prog_p)
 
-# --- TAB 4: CARTÕES ---
 with tabs[3]:
     st.subheader("Cartões")
     with st.expander("➕ Adicionar"):
@@ -321,7 +325,6 @@ with tabs[3]:
             save_df("Cartoes", df_c_atualizado)
             st.rerun()
 
-# --- TAB 5: CONTAS ---
 with tabs[4]: 
     st.subheader("Contas")
     with st.expander("➕ Adicionar"):
@@ -339,7 +342,6 @@ with tabs[4]:
             save_df("Contas", df_a_atualizado)
             st.rerun()
 
-# --- TAB 6: PERFIL / EXTRATO ---
 with tabs[5]: 
     st.subheader("Meu Perfil")
     meu_perfil = df_users[df_users['Usuario'] == st.session_state['usuario_logado'].lower()]
@@ -381,6 +383,22 @@ with tabs[5]:
 
 # --- NOTÍCIAS NO FINAL ---
 st.divider()
-st.subheader("📰 Notícias do Canadá (CBC)")
-for n in buscar_noticias_canada():
-    st.markdown(f"<div class='news-box'><a href='{n.link}' target='_blank' style='color:#ff4b4b; text-decoration:none;'><b>{n.title}</b></a></div>", unsafe_allow_html=True)
+st.subheader("📰 Últimas Notícias do Canadá (CBC)")
+
+noticias = buscar_noticias_canada()
+
+if noticias:
+    for n in noticias:
+        data_pub = n.get('published', '')[0:16]
+        
+        st.markdown(f"""
+        <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #d13639;'>
+            <a href='{n.link}' target='_blank' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
+                {n.title}
+            </a>
+            <br>
+            <span style='color: #aaa; font-size: 0.85rem;'>📅 {data_pub}</span>
+        </div>
+        """, unsafe_allow_html=True)
+else:
+    st.info("Buscando notícias... Se não aparecerem, o site da emissora pode estar temporariamente indisponível.")
