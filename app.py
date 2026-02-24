@@ -399,10 +399,10 @@ if noticias:
     for n in noticias:
         data_pub = n.get('published', '')[0:16]
         
-        # ADICIONEI O rel='noopener noreferrer' AQUI NO LINK 👇
+        # 👇 ADICIONADO O referrerpolicy='no-referrer' 👇
         st.markdown(f"""
         <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #d13639;'>
-            <a href='{n.link}' target='_blank' rel='noopener noreferrer' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
+            <a href='{n.link}' target='_blank' rel='noopener noreferrer' referrerpolicy='no-referrer' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
                 {n.title}
             </a>
             <br>
