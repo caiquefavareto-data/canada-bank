@@ -22,7 +22,7 @@ st.set_page_config(page_title="Canada Bank - Login", layout="wide")
 # ☁️ CONEXÃO COM O GOOGLE SHEETS
 # ==========================================
 # 👇 COLE O LINK DA SUA PLANILHA AQUI 👇
-URL_PLANILHA = "COLE_O_LINK_DA_PLANILHA_AQUI"
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1UpxDZA4Bfio0kzfmcFuyAzhPIrRoOQBMA7B5a2soHOo/edit?gid=0#gid=0"
 
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -79,6 +79,30 @@ def enviar_email_recuperacao(destinatario, nova_senha, nome_usuario):
         return False
 
 # ==========================================
+# 🌄 CONFIGURAÇÃO DE IMAGENS DE FUNDO
+# ==========================================
+imagens_canada = [
+    "https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000", # Moraine Lake
+    "https://images.unsplash.com/photo-1503614472-8c93d56e92ce?q=80&w=2000", # Montanhas Rochosas
+    "https://images.unsplash.com/photo-1534067783941-51c9c236306c?q=80&w=2000", # Vancouver Skyline
+    "https://images.unsplash.com/photo-1580060839134-75a5edca2e27?q=80&w=2000", # Toronto CN Tower
+    "https://images.unsplash.com/photo-1523633589114-88eaf4b4f1a8?q=80&w=2000"  # Estrada no Outono
+]
+# Escolhe uma imagem aleatória a cada carregamento
+imagem_fundo = random.choice(imagens_canada)
+
+st.markdown(f"""
+    <style>
+    .stApp {{ 
+        background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), 
+                    url("{imagem_fundo}"); 
+        background-size: cover; background-attachment: fixed; background-position: center;
+    }}
+    h1, h2, h3, p, label {{ color: white !important; }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# ==========================================
 # 🛡️ TELA DE LOGIN E CARREGAMENTO DE BANCO
 # ==========================================
 df_users = get_df("Usuarios", ["Usuario", "Senha", "Email"])
@@ -97,12 +121,6 @@ if "autenticado" not in st.session_state:
     st.session_state["usuario_logado"] = ""
 
 if not st.session_state["autenticado"]:
-    st.markdown("""
-        <style>
-        .stApp { background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), url("https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000"); background-size: cover; }
-        </style>
-    """, unsafe_allow_html=True)
-    
     st.markdown("<h1 style='text-align: center; color: white; margin-top: 50px;'>🇨🇦 Canada Bank</h1>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -180,6 +198,7 @@ def obter_cotacao_viva():
 
 def buscar_noticias_canada():
     try:
+        # Disfarça o navegador para evitar bloqueio
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         resposta = requests.get("https://www.cbc.ca/cmlink/rss-canada", headers=headers, timeout=5)
         feed = feedparser.parse(resposta.content)
@@ -206,17 +225,6 @@ def gerar_calendario_html(ano, mes, data_viagem):
     return html
 
 cotacao_cad_brl = obter_cotacao_viva()
-
-st.markdown("""
-    <style>
-    .stApp { 
-        background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)), 
-                    url("https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000"); 
-        background-size: cover; background-attachment: fixed;
-    }
-    h1, h2, h3, p, label { color: white !important; }
-    </style>
-    """, unsafe_allow_html=True)
 
 col_t1, col_t2 = st.columns([5, 1])
 with col_t1: st.title(f"🇨🇦 Canada Bank | Olá, {st.session_state['usuario_logado']}!")
@@ -391,9 +399,10 @@ if noticias:
     for n in noticias:
         data_pub = n.get('published', '')[0:16]
         
+        # ADICIONEI O rel='noopener noreferrer' AQUI NO LINK 👇
         st.markdown(f"""
         <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #d13639;'>
-            <a href='{n.link}' target='_blank' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
+            <a href='{n.link}' target='_blank' rel='noopener noreferrer' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
                 {n.title}
             </a>
             <br>
