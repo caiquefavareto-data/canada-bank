@@ -194,14 +194,22 @@ else:
     df_goal['Poupanca_Mensal'] = pd.to_numeric(df_goal['Poupanca_Mensal'], errors='coerce').fillna(1000.0).astype(float)
 config_canada = df_goal.iloc[0]
 
-# 🚀 TURBO 2: Cotação atualiza a cada 1 hora
-@st.cache_data(ttl=3600)
+# 👇 AQUI ESTÁ A NOVA LÓGICA DE COTAÇÃO ULTRA PRECISA 👇
+# 🚀 TURBO 2: Cotação agora atualiza a cada 10 minutos usando API focada em Câmbio
+@st.cache_data(ttl=600)
 def obter_cotacao_viva():
     try:
-        ticker = yf.Ticker("CADBRL=X")
-        hist = ticker.history(period="1d")
-        return hist['Close'].iloc[-1] if not hist.empty else 3.75
-    except: return 3.75
+        # Plano A: AwesomeAPI (Muito mais rápido e não bloqueia na nuvem)
+        resposta = requests.get("https://economia.awesomeapi.com.br/last/CAD-BRL", timeout=5)
+        dados = resposta.json()
+        return float(dados['CADBRL']['bid'])
+    except:
+        try:
+            # Plano B: Yahoo Finance caso o Plano A falhe
+            ticker = yf.Ticker("CADBRL=X")
+            return float(ticker.history(period="1d")['Close'].iloc[-1])
+        except: 
+            return 3.76 # Novo valor de segurança (mais próximo do real)
 
 # 🚀 TURBO 3: Notícias atualizam a cada 1 hora
 @st.cache_data(ttl=3600)
@@ -250,7 +258,7 @@ m1, m2, m3, m4 = st.columns(4)
 m1.metric("🇧🇷 Saldo Atual", f"R$ {saldo_brl:,.2f}")
 m2.metric("🇨🇦 Fundo Canadá", f"CAD$ {saldo_projeto_cad:,.2f}")
 m3.metric("🎯 Meta", f"CAD$ {config_canada['Meta_CAD']:,.2f}")
-m4.metric("📈 1 CAD hoje", f"R$ {cotacao_cad_brl:.2f}")
+m4.metric("📈 1 CAD hoje", f"R$ {cotacao_cad_brl:.4f}") # Mostra a cotação com 4 casas decimais para maior clareza
 
 tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "💳 Cartões", "🏦 Contas", "👤 Perfil / Extrato"])
 
@@ -265,7 +273,6 @@ with tabs[0]:
             df_hist['Sinal'] = df_hist.apply(lambda x: x['Valor'] if x['Tipo'] in ['Entrada', 'Juros / Rendimento', 'Aporte Poupança'] else -x['Valor'], axis=1)
             df_hist['Saldo_Acumulado'] = df_hist['Sinal'].cumsum()
             
-            # 👇 O GRÁFICO AGORA MOSTRA LINHAS E BOLINHAS (MARKERS) 👇
             fig_trend = go.Figure(go.Scatter(
                 x=df_hist['Data'], 
                 y=df_hist['Saldo_Acumulado'], 
