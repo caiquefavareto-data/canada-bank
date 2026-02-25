@@ -22,7 +22,7 @@ st.set_page_config(page_title="Canada Bank", layout="wide")
 # ☁️ CONEXÃO COM O GOOGLE SHEETS
 # ==========================================
 # 👇 COLE O LINK DA SUA PLANILHA AQUI 👇
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1UpxDZA4Bfio0kzfmcFuyAzhPIrRoOQBMA7B5a2soHOo/edit?gid=0#gid=0"
+URL_PLANILHA = "COLE_O_LINK_DA_PLANILHA_AQUI"
 
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -177,7 +177,10 @@ df_c = get_df("Cartoes", ["Nome", "Titular", "Ultimos_Digitos", "Limite_Total"])
 if not df_c.empty:
     df_c['Limite_Total'] = pd.to_numeric(df_c['Limite_Total'], errors='coerce').fillna(0.0).astype(float)
 
-df_a = get_df("Contas", ["Nome", "Titular"])
+df_a = get_df("Contas", ["Nome", "Titular", "Dia_Vencimento"])
+if 'Dia_Vencimento' not in df_a.columns:
+    df_a['Dia_Vencimento'] = 10
+df_a['Dia_Vencimento'] = pd.to_numeric(df_a['Dia_Vencimento'], errors='coerce').fillna(10).astype(int)
 
 df_goal = get_df("Metas", ["Meta_CAD", "Data_Viagem", "Poupanca_Mensal"])
 if df_goal.empty:
@@ -198,7 +201,6 @@ def obter_cotacao_viva():
 def buscar_noticias_canada():
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        # NOVO FEED: Global News Canada
         resposta = requests.get("https://globalnews.ca/canada/feed/", headers=headers, timeout=5)
         feed = feedparser.parse(resposta.content)
         return feed.entries[:5]
@@ -243,7 +245,7 @@ m2.metric("🇨🇦 Fundo Canadá", f"CAD$ {saldo_projeto_cad:,.2f}")
 m3.metric("🎯 Meta", f"CAD$ {config_canada['Meta_CAD']:,.2f}")
 m4.metric("📈 1 CAD hoje", f"R$ {cotacao_cad_brl:.2f}")
 
-tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "💳 Cartões", "🏦 Contas", "👤 Perfil / Extrato"])
+tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "💳 Cartões", "🏦 Contas (A Pagar)", "👤 Perfil / Extrato"])
 
 with tabs[0]:
     st.subheader("Tendência do Patrimônio")
@@ -263,7 +265,7 @@ with tabs[1]:
         tp = c2.selectbox("Tipo", ["Entrada", "Saída"])
         ori = c3.selectbox("Origem/Destino", df_a['Nome'].tolist() + df_c['Nome'].tolist() + ["Dinheiro Vivo"]) if not df_a.empty else c3.selectbox("Origem/Destino", ["Dinheiro Vivo"])
         cat = st.selectbox("Categoria", ["Salário", "Mercado", "Lazer", "Internet", "Moradia", "Saúde", "Outros"])
-        ds = st.text_input("Descrição")
+        ds = st.text_input("Descrição (Ex: Pagamento da Luz)")
         vl = st.number_input("Valor R$", min_value=0.0)
         if st.form_submit_button("Confirmar"):
             novo_id = df_t['ID'].max() + 1 if not df_t.empty else 1
@@ -333,21 +335,62 @@ with tabs[3]:
             st.rerun()
 
 with tabs[4]: 
-    st.subheader("Contas")
-    with st.expander("➕ Adicionar"):
+    st.subheader("Contas Mensais (A Pagar)")
+    st.caption("Cadastre suas contas. Elas mudarão de cor sozinhas dependendo da data de hoje!")
+    with st.expander("➕ Adicionar Conta"):
         with st.form("a_f"):
-            na = st.text_input("Banco"); ta = st.selectbox("Titular", ["Caique", "Regiane"])
+            na = st.text_input("Nome da Conta (ex: Luz, Aluguel, Internet)")
+            ta = st.selectbox("Responsável", ["Caique", "Regiane"])
+            dv = st.number_input("Dia do Vencimento", min_value=1, max_value=31, value=10)
             if st.form_submit_button("Gravar"):
-                novo_a = pd.DataFrame([{"Nome": na, "Titular": ta}])
+                novo_a = pd.DataFrame([{"Nome": na, "Titular": ta, "Dia_Vencimento": dv}])
                 df_a_atualizado = pd.concat([df_a, novo_a], ignore_index=True)
                 save_df("Contas", df_a_atualizado)
                 st.rerun()
+    
+    hoje = datetime.date.today()
+    t_mes = df_t[(df_t['Data'].dt.month == hoje.month) & (df_t['Data'].dt.year == hoje.year)] if not df_t.empty else pd.DataFrame()
+
     for i, r in df_a.iterrows():
-        c1, c2 = st.columns([4,1]); c1.write(f"🏦 **{r['Nome']}** - {r.get('Titular', 'N/A')}")
-        if c2.button("Excluir", key=f"a_{i}"): 
-            df_a_atualizado = df_a.drop(i)
-            save_df("Contas", df_a_atualizado)
-            st.rerun()
+        nome_conta = str(r['Nome'])
+        dia_venc = int(r.get('Dia_Vencimento', 10))
+        dias_restantes = dia_venc - hoje.day
+        
+        pago = False
+        if not t_mes.empty:
+            pago = t_mes['Desc'].str.contains(nome_conta, case=False, na=False).any()
+        
+        # A MÁGICA DO NOVO SEMÁFORO
+        if pago:
+            status = "✅ **Pago este mês**"
+            cor = "#4CAF50" # Verde
+        elif hoje.day > dia_venc:
+            status = "🚨 **URGENTE (Atrasado)**"
+            cor = "#d13639" # Vermelho
+        elif hoje.day == dia_venc:
+            status = "⚠️ **Vence Hoje!**"
+            cor = "#FF9800" # Laranja
+        elif 0 < dias_restantes <= 5: # O SEU NOVO ALERTA AMARELO
+            status = f"🟡 **Atenção** (Vence em {dias_restantes} dias)"
+            cor = "#FDD835" # Amarelo vibrante
+        else:
+            status = f"⏳ **Pendente** (Vence dia {dia_venc})"
+            cor = "#555" # Cinza
+
+        c1, c2 = st.columns([4,1])
+        with c1:
+            st.markdown(f"""
+            <div style='background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 4px solid {cor};'>
+                <b style='color: white; font-size: 1.1rem;'>🏦 {nome_conta}</b> <span style='color: #aaa; font-size: 0.9rem;'>- {r.get('Titular', '')}</span><br>
+                <span style='font-size: 0.95rem;'>{status}</span>
+            </div>
+            """, unsafe_allow_html=True)
+        with c2:
+            st.write("")
+            if st.button("🗑️ Excluir", key=f"a_{i}"): 
+                df_a_atualizado = df_a.drop(i)
+                save_df("Contas", df_a_atualizado)
+                st.rerun()
 
 with tabs[5]: 
     st.subheader("Meu Perfil")
@@ -396,9 +439,7 @@ noticias = buscar_noticias_canada()
 
 if noticias:
     for n in noticias:
-        # Pega os primeiros 16 caracteres da data de publicação para ficar limpo
         data_pub = n.get('published', '')[0:16]
-        
         st.markdown(f"""
         <div style='background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #d13639;'>
             <a href='{n.link}' target='_blank' rel='noopener noreferrer' style='color: white; text-decoration: none; font-size: 1.1rem; font-weight: bold;'>
