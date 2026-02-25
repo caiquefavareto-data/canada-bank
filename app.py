@@ -107,7 +107,6 @@ st.markdown(f"""
 # ==========================================
 # 🛡️ TELA DE LOGIN E CARREGAMENTO DE BANCO
 # ==========================================
-# Usando tuplas (...) ao invés de listas [...] para o cache funcionar perfeitamente
 df_users = get_df("Usuarios", ("Usuario", "Senha", "Email"))
 
 if df_users.empty:
@@ -170,7 +169,7 @@ if not st.session_state["autenticado"]:
 # ==========================================
 # 🍁 APLICATIVO PRINCIPAL (LOGADO)
 # ==========================================
-df_t = get_df("Transacoes", ("ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo"))
+df_t = get_df("Transacoes", ("ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo", "Vencimento"))
 if not df_t.empty:
     df_t['ID'] = pd.to_numeric(df_t['ID'], errors='coerce').fillna(0).astype(int)
     df_t['Valor'] = pd.to_numeric(df_t['Valor'], errors='coerce').fillna(0.0).astype(float)
@@ -258,12 +257,34 @@ tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "
 with tabs[0]:
     st.subheader("Tendência do Patrimônio")
     if not df_t.empty:
-        df_hist = df_t.sort_values('Data').dropna(subset=['Data'])
-        df_hist['Sinal'] = df_hist.apply(lambda x: x['Valor'] if x['Tipo'] in ['Entrada', 'Juros / Rendimento', 'Aporte Poupança'] else -x['Valor'], axis=1)
-        df_hist['Saldo_Acumulado'] = df_hist['Sinal'].cumsum()
-        fig_trend = go.Figure(go.Scatter(x=df_hist['Data'], y=df_hist['Saldo_Acumulado'], fill='tozeroy', line=dict(color='#d13639')))
-        fig_trend.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color="white"))
-        st.plotly_chart(fig_trend, use_container_width=True)
+        df_hist = df_t.copy()
+        df_hist['Data'] = pd.to_datetime(df_hist['Data'], errors='coerce')
+        df_hist = df_hist.dropna(subset=['Data']).sort_values('Data')
+        
+        if not df_hist.empty:
+            df_hist['Sinal'] = df_hist.apply(lambda x: x['Valor'] if x['Tipo'] in ['Entrada', 'Juros / Rendimento', 'Aporte Poupança'] else -x['Valor'], axis=1)
+            df_hist['Saldo_Acumulado'] = df_hist['Sinal'].cumsum()
+            
+            # 👇 O GRÁFICO AGORA MOSTRA LINHAS E BOLINHAS (MARKERS) 👇
+            fig_trend = go.Figure(go.Scatter(
+                x=df_hist['Data'], 
+                y=df_hist['Saldo_Acumulado'], 
+                fill='tozeroy', 
+                mode='lines+markers', 
+                line=dict(color='#d13639', width=3),
+                marker=dict(size=8, color='#d13639')
+            ))
+            fig_trend.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)', 
+                plot_bgcolor='rgba(0,0,0,0)', 
+                font=dict(color="white"),
+                margin=dict(l=0, r=0, t=30, b=0)
+            )
+            st.plotly_chart(fig_trend, use_container_width=True)
+        else:
+            st.info("Nenhuma transação válida para gerar o gráfico.")
+    else:
+        st.info("Registre sua primeira transação para ver o gráfico de saúde financeira!")
 
 with tabs[1]:
     col_lan1, col_lan2 = st.columns([1.2, 1])
@@ -282,10 +303,14 @@ with tabs[1]:
             ])
             
             ds = st.text_input("Descrição (Ex: Pagamento da Luz)")
-            vl = st.number_input("Valor R$", min_value=0.0)
+            
+            c_v1, c_v2 = st.columns(2)
+            vl = c_v1.number_input("Valor R$", min_value=0.0)
+            venc = c_v2.date_input("Data de Vencimento")
+            
             if st.form_submit_button("Confirmar Lançamento"):
                 novo_id = df_t['ID'].max() + 1 if not df_t.empty else 1
-                novo_d = pd.DataFrame([{"ID": int(novo_id), "Data": datetime.date.today(), "User": u, "Tipo": tp, "Cat": cat, "Desc": ds, "Valor": vl, "Origem": ori, "Metodo": "Direto"}])
+                novo_d = pd.DataFrame([{"ID": int(novo_id), "Data": datetime.date.today(), "User": u, "Tipo": tp, "Cat": cat, "Desc": ds, "Valor": vl, "Origem": ori, "Metodo": "Direto", "Vencimento": venc}])
                 df_atualizado = pd.concat([df_t, novo_d], ignore_index=True)
                 save_df("Transacoes", df_atualizado)
                 st.rerun()
@@ -363,7 +388,7 @@ with tabs[2]:
                 if st.form_submit_button("Registrar"):
                     real_val = -vl_c if "Saída" in tp_c else vl_c
                     novo_id = df_t['ID'].max() + 1 if not df_t.empty else 1
-                    novo_d = pd.DataFrame([{"ID": int(novo_id), "Data": datetime.date.today(), "User": u_c, "Tipo": tp_c, "Cat": cat_c, "Desc": "Projeto Canada", "Valor": real_val, "Origem": "Projeto Canadá", "Metodo": "Planejamento"}])
+                    novo_d = pd.DataFrame([{"ID": int(novo_id), "Data": datetime.date.today(), "User": u_c, "Tipo": tp_c, "Cat": cat_c, "Desc": "Projeto Canada", "Valor": real_val, "Origem": "Projeto Canadá", "Metodo": "Planejamento", "Vencimento": datetime.date.today()}])
                     df_atualizado = pd.concat([df_t, novo_d], ignore_index=True)
                     save_df("Transacoes", df_atualizado)
                     st.rerun()
@@ -463,7 +488,7 @@ with tabs[5]:
         
         st.divider()
         if st.button("Zerar Histórico"):
-            save_df("Transacoes", pd.DataFrame(columns=["ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo"]))
+            save_df("Transacoes", pd.DataFrame(columns=["ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo", "Vencimento"]))
             st.rerun()
 
 # --- NOTÍCIAS NO FINAL ---
