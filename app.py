@@ -22,7 +22,7 @@ st.set_page_config(page_title="Canada Bank", layout="wide")
 # ☁️ CONEXÃO COM O GOOGLE SHEETS
 # ==========================================
 # 👇 COLE O LINK DA SUA PLANILHA AQUI 👇
-URL_PLANILHA = "COLE_O_LINK_DA_PLANILHA_AQUI"
+URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1UpxDZA4Bfio0kzfmcFuyAzhPIrRoOQBMA7B5a2soHOo/edit?gid=0#gid=0"
 
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -482,3 +482,4 @@ if noticias:
         """, unsafe_allow_html=True)
 else:
     st.info("Buscando notícias... Se não aparecerem, o site da emissora pode estar temporariamente indisponível.")
+
