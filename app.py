@@ -264,7 +264,13 @@ with tabs[1]:
         u = c1.selectbox("Responsável", ["Caique", "Regiane"], index=0 if st.session_state['usuario_logado'] == 'Caique' else 1)
         tp = c2.selectbox("Tipo", ["Entrada", "Saída"])
         ori = c3.selectbox("Origem/Destino", df_a['Nome'].tolist() + df_c['Nome'].tolist() + ["Dinheiro Vivo"]) if not df_a.empty else c3.selectbox("Origem/Destino", ["Dinheiro Vivo"])
-        cat = st.selectbox("Categoria", ["Salário", "Mercado", "Lazer", "Internet", "Moradia", "Saúde", "Outros"])
+        
+        # 👇 LISTA DE CATEGORIAS AMPLIADA AQUI 👇
+        cat = st.selectbox("Categoria", [
+            "Salário", "Mercado", "Educação", "Transporte", "Moradia", 
+            "Saúde", "Lazer", "Internet", "Vestuário", "Pets", "Outros"
+        ])
+        
         ds = st.text_input("Descrição (Ex: Pagamento da Luz)")
         vl = st.number_input("Valor R$", min_value=0.0)
         if st.form_submit_button("Confirmar"):
@@ -360,7 +366,6 @@ with tabs[4]:
         if not t_mes.empty:
             pago = t_mes['Desc'].str.contains(nome_conta, case=False, na=False).any()
         
-        # A MÁGICA DO NOVO SEMÁFORO
         if pago:
             status = "✅ **Pago este mês**"
             cor = "#4CAF50" # Verde
@@ -370,7 +375,7 @@ with tabs[4]:
         elif hoje.day == dia_venc:
             status = "⚠️ **Vence Hoje!**"
             cor = "#FF9800" # Laranja
-        elif 0 < dias_restantes <= 5: # O SEU NOVO ALERTA AMARELO
+        elif 0 < dias_restantes <= 5:
             status = f"🟡 **Atenção** (Vence em {dias_restantes} dias)"
             cor = "#FDD835" # Amarelo vibrante
         else:
