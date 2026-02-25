@@ -22,7 +22,7 @@ st.set_page_config(page_title="Canada Bank", layout="wide")
 # ☁️ CONEXÃO COM O GOOGLE SHEETS
 # ==========================================
 # 👇 COLE O LINK DA SUA PLANILHA AQUI 👇
-URL_PLANILHA = "https://docs.google.com/spreadsheets/d/1UpxDZA4Bfio0kzfmcFuyAzhPIrRoOQBMA7B5a2soHOo/edit?gid=0#gid=0"
+URL_PLANILHA = "COLE_O_LINK_DA_PLANILHA_AQUI"
 
 scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -177,10 +177,13 @@ df_c = get_df("Cartoes", ["Nome", "Titular", "Ultimos_Digitos", "Limite_Total"])
 if not df_c.empty:
     df_c['Limite_Total'] = pd.to_numeric(df_c['Limite_Total'], errors='coerce').fillna(0.0).astype(float)
 
-df_a = get_df("Contas", ["Nome", "Titular", "Dia_Vencimento"])
-if 'Dia_Vencimento' not in df_a.columns:
-    df_a['Dia_Vencimento'] = 10
-df_a['Dia_Vencimento'] = pd.to_numeric(df_a['Dia_Vencimento'], errors='coerce').fillna(10).astype(int)
+# ABA DE CONTAS VOLTOU AO NORMAL (Apenas Bancos)
+df_a = get_df("Contas", ["Nome", "Titular"])
+
+# NOVA PLANILHA PARA DESPESAS FIXAS
+df_fixas = get_df("Despesas_Fixas", ["Nome", "Responsavel", "Dia_Vencimento"])
+if not df_fixas.empty:
+    df_fixas['Dia_Vencimento'] = pd.to_numeric(df_fixas['Dia_Vencimento'], errors='coerce').fillna(10).astype(int)
 
 df_goal = get_df("Metas", ["Meta_CAD", "Data_Viagem", "Poupanca_Mensal"])
 if df_goal.empty:
@@ -245,7 +248,7 @@ m2.metric("🇨🇦 Fundo Canadá", f"CAD$ {saldo_projeto_cad:,.2f}")
 m3.metric("🎯 Meta", f"CAD$ {config_canada['Meta_CAD']:,.2f}")
 m4.metric("📈 1 CAD hoje", f"R$ {cotacao_cad_brl:.2f}")
 
-tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "💳 Cartões", "🏦 Contas (A Pagar)", "👤 Perfil / Extrato"])
+tabs = st.tabs(["📊 Saúde Financeira", "💰 Lançar", "🍁 Planejamento", "💳 Cartões", "🏦 Contas", "👤 Perfil / Extrato"])
 
 with tabs[0]:
     st.subheader("Tendência do Patrimônio")
@@ -258,27 +261,89 @@ with tabs[0]:
         st.plotly_chart(fig_trend, use_container_width=True)
 
 with tabs[1]:
-    with st.form("form_lan"):
-        st.subheader("Lançamento Mensal")
-        c1, c2, c3 = st.columns(3)
-        u = c1.selectbox("Responsável", ["Caique", "Regiane"], index=0 if st.session_state['usuario_logado'] == 'Caique' else 1)
-        tp = c2.selectbox("Tipo", ["Entrada", "Saída"])
-        ori = c3.selectbox("Origem/Destino", df_a['Nome'].tolist() + df_c['Nome'].tolist() + ["Dinheiro Vivo"]) if not df_a.empty else c3.selectbox("Origem/Destino", ["Dinheiro Vivo"])
+    # DIVIDIMOS A TELA DE LANÇAR EM DUAS COLUNAS
+    col_lan1, col_lan2 = st.columns([1.2, 1])
+    
+    with col_lan1:
+        with st.form("form_lan"):
+            st.subheader("Novo Lançamento")
+            c1, c2, c3 = st.columns(3)
+            u = c1.selectbox("Responsável", ["Caique", "Regiane"], index=0 if st.session_state['usuario_logado'] == 'Caique' else 1)
+            tp = c2.selectbox("Tipo", ["Entrada", "Saída"])
+            ori = c3.selectbox("Origem/Destino", df_a['Nome'].tolist() + df_c['Nome'].tolist() + ["Dinheiro Vivo"]) if not df_a.empty else c3.selectbox("Origem/Destino", ["Dinheiro Vivo"])
+            
+            cat = st.selectbox("Categoria", [
+                "Salário", "Mercado", "Educação", "Transporte", "Moradia", 
+                "Saúde", "Lazer", "Internet", "Vestuário", "Pets", "Outros"
+            ])
+            
+            ds = st.text_input("Descrição (Ex: Pagamento da Luz)")
+            vl = st.number_input("Valor R$", min_value=0.0)
+            if st.form_submit_button("Confirmar Lançamento"):
+                novo_id = df_t['ID'].max() + 1 if not df_t.empty else 1
+                novo_d = pd.DataFrame([{"ID": int(novo_id), "Data": datetime.date.today(), "User": u, "Tipo": tp, "Cat": cat, "Desc": ds, "Valor": vl, "Origem": ori, "Metodo": "Direto"}])
+                df_atualizado = pd.concat([df_t, novo_d], ignore_index=True)
+                save_df("Transacoes", df_atualizado)
+                st.rerun()
+
+    with col_lan2:
+        st.subheader("📌 Contas Fixas do Mês")
+        with st.expander("➕ Cadastrar Nova Conta Fixa"):
+            with st.form("f_fixas"):
+                n_f = st.text_input("Nome da Conta (ex: Luz, Aluguel)")
+                r_f = st.selectbox("Responsável", ["Caique", "Regiane"])
+                d_f = st.number_input("Dia do Vencimento", min_value=1, max_value=31, value=10)
+                if st.form_submit_button("Salvar Conta Fixa"):
+                    nova_fixa = pd.DataFrame([{"Nome": n_f, "Responsavel": r_f, "Dia_Vencimento": d_f}])
+                    df_fixas_atualizado = pd.concat([df_fixas, nova_fixa], ignore_index=True)
+                    save_df("Despesas_Fixas", df_fixas_atualizado)
+                    st.rerun()
         
-        # 👇 LISTA DE CATEGORIAS AMPLIADA AQUI 👇
-        cat = st.selectbox("Categoria", [
-            "Salário", "Mercado", "Educação", "Transporte", "Moradia", 
-            "Saúde", "Lazer", "Internet", "Vestuário", "Pets", "Outros"
-        ])
-        
-        ds = st.text_input("Descrição (Ex: Pagamento da Luz)")
-        vl = st.number_input("Valor R$", min_value=0.0)
-        if st.form_submit_button("Confirmar"):
-            novo_id = df_t['ID'].max() + 1 if not df_t.empty else 1
-            novo_d = pd.DataFrame([{"ID": int(novo_id), "Data": datetime.date.today(), "User": u, "Tipo": tp, "Cat": cat, "Desc": ds, "Valor": vl, "Origem": ori, "Metodo": "Direto"}])
-            df_atualizado = pd.concat([df_t, novo_d], ignore_index=True)
-            save_df("Transacoes", df_atualizado)
-            st.rerun()
+        hoje = datetime.date.today()
+        t_mes = df_t[(df_t['Data'].dt.month == hoje.month) & (df_t['Data'].dt.year == hoje.year)] if not df_t.empty else pd.DataFrame()
+
+        if not df_fixas.empty:
+            for i, r in df_fixas.iterrows():
+                nome_conta = str(r['Nome'])
+                dia_venc = int(r.get('Dia_Vencimento', 10))
+                dias_restantes = dia_venc - hoje.day
+                
+                pago = False
+                if not t_mes.empty:
+                    pago = t_mes['Desc'].str.contains(nome_conta, case=False, na=False).any()
+                
+                if pago:
+                    status = "✅ **Pago**"
+                    cor = "#4CAF50" # Verde
+                elif hoje.day > dia_venc:
+                    status = "🚨 **Atrasado**"
+                    cor = "#d13639" # Vermelho
+                elif hoje.day == dia_venc:
+                    status = "⚠️ **Vence Hoje!**"
+                    cor = "#FF9800" # Laranja
+                elif 0 < dias_restantes <= 5:
+                    status = f"🟡 **Atenção ({dias_restantes} dias)**"
+                    cor = "#FDD835" # Amarelo
+                else:
+                    status = f"⏳ **Vence dia {dia_venc}**"
+                    cor = "#555" # Cinza
+
+                c1, c2 = st.columns([5,1])
+                with c1:
+                    st.markdown(f"""
+                    <div style='background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; margin-bottom: 5px; border-left: 4px solid {cor};'>
+                        <b style='color: white; font-size: 1rem;'>{nome_conta}</b> <span style='color: #aaa; font-size: 0.8rem;'>- {r.get('Responsavel', '')}</span><br>
+                        <span style='font-size: 0.85rem;'>{status}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with c2:
+                    st.write("")
+                    if st.button("🗑️", key=f"f_{i}"): 
+                        df_fixas_atualizado = df_fixas.drop(i)
+                        save_df("Despesas_Fixas", df_fixas_atualizado)
+                        st.rerun()
+        else:
+            st.info("Nenhuma conta fixa cadastrada ainda.")
 
 with tabs[2]:
     st.header("🇨🇦 Planejamento")
@@ -341,61 +406,22 @@ with tabs[3]:
             st.rerun()
 
 with tabs[4]: 
-    st.subheader("Contas Mensais (A Pagar)")
-    st.caption("Cadastre suas contas. Elas mudarão de cor sozinhas dependendo da data de hoje!")
-    with st.expander("➕ Adicionar Conta"):
+    st.subheader("Contas Bancárias")
+    st.caption("Suas contas corrente, corretoras, etc.")
+    with st.expander("➕ Adicionar"):
         with st.form("a_f"):
-            na = st.text_input("Nome da Conta (ex: Luz, Aluguel, Internet)")
-            ta = st.selectbox("Responsável", ["Caique", "Regiane"])
-            dv = st.number_input("Dia do Vencimento", min_value=1, max_value=31, value=10)
+            na = st.text_input("Banco"); ta = st.selectbox("Titular", ["Caique", "Regiane"])
             if st.form_submit_button("Gravar"):
-                novo_a = pd.DataFrame([{"Nome": na, "Titular": ta, "Dia_Vencimento": dv}])
+                novo_a = pd.DataFrame([{"Nome": na, "Titular": ta}])
                 df_a_atualizado = pd.concat([df_a, novo_a], ignore_index=True)
                 save_df("Contas", df_a_atualizado)
                 st.rerun()
-    
-    hoje = datetime.date.today()
-    t_mes = df_t[(df_t['Data'].dt.month == hoje.month) & (df_t['Data'].dt.year == hoje.year)] if not df_t.empty else pd.DataFrame()
-
     for i, r in df_a.iterrows():
-        nome_conta = str(r['Nome'])
-        dia_venc = int(r.get('Dia_Vencimento', 10))
-        dias_restantes = dia_venc - hoje.day
-        
-        pago = False
-        if not t_mes.empty:
-            pago = t_mes['Desc'].str.contains(nome_conta, case=False, na=False).any()
-        
-        if pago:
-            status = "✅ **Pago este mês**"
-            cor = "#4CAF50" # Verde
-        elif hoje.day > dia_venc:
-            status = "🚨 **URGENTE (Atrasado)**"
-            cor = "#d13639" # Vermelho
-        elif hoje.day == dia_venc:
-            status = "⚠️ **Vence Hoje!**"
-            cor = "#FF9800" # Laranja
-        elif 0 < dias_restantes <= 5:
-            status = f"🟡 **Atenção** (Vence em {dias_restantes} dias)"
-            cor = "#FDD835" # Amarelo vibrante
-        else:
-            status = f"⏳ **Pendente** (Vence dia {dia_venc})"
-            cor = "#555" # Cinza
-
-        c1, c2 = st.columns([4,1])
-        with c1:
-            st.markdown(f"""
-            <div style='background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 4px solid {cor};'>
-                <b style='color: white; font-size: 1.1rem;'>🏦 {nome_conta}</b> <span style='color: #aaa; font-size: 0.9rem;'>- {r.get('Titular', '')}</span><br>
-                <span style='font-size: 0.95rem;'>{status}</span>
-            </div>
-            """, unsafe_allow_html=True)
-        with c2:
-            st.write("")
-            if st.button("🗑️ Excluir", key=f"a_{i}"): 
-                df_a_atualizado = df_a.drop(i)
-                save_df("Contas", df_a_atualizado)
-                st.rerun()
+        c1, c2 = st.columns([4,1]); c1.write(f"🏦 **{r['Nome']}** - {r.get('Titular', 'N/A')}")
+        if c2.button("Excluir", key=f"a_{i}"): 
+            df_a_atualizado = df_a.drop(i)
+            save_df("Contas", df_a_atualizado)
+            st.rerun()
 
 with tabs[5]: 
     st.subheader("Meu Perfil")
@@ -456,4 +482,3 @@ if noticias:
         """, unsafe_allow_html=True)
 else:
     st.info("Buscando notícias... Se não aparecerem, o site da emissora pode estar temporariamente indisponível.")
-
