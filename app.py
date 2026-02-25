@@ -38,16 +38,18 @@ def get_planilha():
 
 sh = get_planilha()
 
+# 🚀 TURBO 1: Salva as planilhas na memória por 2 minutos
+@st.cache_data(ttl=120)
 def get_df(aba, colunas_padrao):
     try:
         ws = sh.worksheet(aba)
     except gspread.exceptions.WorksheetNotFound:
         ws = sh.add_worksheet(title=aba, rows=100, cols=20)
-        ws.append_row(colunas_padrao)
+        ws.append_row(list(colunas_padrao))
     
     data = ws.get_all_records()
     if not data:
-        return pd.DataFrame(columns=colunas_padrao)
+        return pd.DataFrame(columns=list(colunas_padrao))
     return pd.DataFrame(data)
 
 def save_df(aba, df):
@@ -57,9 +59,10 @@ def save_df(aba, df):
     df_str = df.astype(str)
     data_to_update = [df_str.columns.values.tolist()] + df_str.values.tolist()
     ws.update(values=data_to_update, range_name="A1")
+    get_df.clear() # Limpa a memória instantaneamente para mostrar os novos dados
 
 # ==========================================
-# 📧 ENVIO DE E-MAIL (Usando os Segredos)
+# 📧 ENVIO DE E-MAIL
 # ==========================================
 def enviar_email_recuperacao(destinatario, nova_senha, nome_usuario):
     email_remetente = st.secrets["email_config"]["email_remetente"]
@@ -79,7 +82,7 @@ def enviar_email_recuperacao(destinatario, nova_senha, nome_usuario):
         return False
 
 # ==========================================
-# 🌄 CONFIGURAÇÃO DE IMAGENS DE FUNDO
+# 🌄 IMAGENS DE FUNDO
 # ==========================================
 imagens_canada = [
     "https://images.unsplash.com/photo-1517935703635-27c736827a7e?q=80&w=2000",
@@ -104,7 +107,8 @@ st.markdown(f"""
 # ==========================================
 # 🛡️ TELA DE LOGIN E CARREGAMENTO DE BANCO
 # ==========================================
-df_users = get_df("Usuarios", ["Usuario", "Senha", "Email"])
+# Usando tuplas (...) ao invés de listas [...] para o cache funcionar perfeitamente
+df_users = get_df("Usuarios", ("Usuario", "Senha", "Email"))
 
 if df_users.empty:
     df_users = pd.DataFrame([
@@ -151,7 +155,6 @@ if not st.session_state["autenticado"]:
                 if not user_match.empty:
                     email_destino = user_match.iloc[0]['Email']
                     nova_senha_gerada = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-                    
                     df_users.loc[df_users['Usuario'].str.lower() == rec_user_input, 'Senha'] = nova_senha_gerada
                     save_df("Usuarios", df_users)
                     
@@ -159,7 +162,7 @@ if not st.session_state["autenticado"]:
                     if sucesso:
                         st.success(f"Nova senha enviada para: {email_destino}")
                     else:
-                        st.error("Erro no envio do email. Verifique as configurações.")
+                        st.error("Erro no envio do email.")
                 else:
                     st.error("Usuário não encontrado.")
     st.stop()
@@ -167,25 +170,23 @@ if not st.session_state["autenticado"]:
 # ==========================================
 # 🍁 APLICATIVO PRINCIPAL (LOGADO)
 # ==========================================
-df_t = get_df("Transacoes", ["ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo"])
+df_t = get_df("Transacoes", ("ID", "Data", "User", "Tipo", "Cat", "Desc", "Valor", "Origem", "Metodo"))
 if not df_t.empty:
     df_t['ID'] = pd.to_numeric(df_t['ID'], errors='coerce').fillna(0).astype(int)
     df_t['Valor'] = pd.to_numeric(df_t['Valor'], errors='coerce').fillna(0.0).astype(float)
     df_t['Data'] = pd.to_datetime(df_t['Data'], errors='coerce')
 
-df_c = get_df("Cartoes", ["Nome", "Titular", "Ultimos_Digitos", "Limite_Total"])
+df_c = get_df("Cartoes", ("Nome", "Titular", "Ultimos_Digitos", "Limite_Total"))
 if not df_c.empty:
     df_c['Limite_Total'] = pd.to_numeric(df_c['Limite_Total'], errors='coerce').fillna(0.0).astype(float)
 
-# ABA DE CONTAS VOLTOU AO NORMAL (Apenas Bancos)
-df_a = get_df("Contas", ["Nome", "Titular"])
+df_a = get_df("Contas", ("Nome", "Titular"))
 
-# NOVA PLANILHA PARA DESPESAS FIXAS
-df_fixas = get_df("Despesas_Fixas", ["Nome", "Responsavel", "Dia_Vencimento"])
+df_fixas = get_df("Despesas_Fixas", ("Nome", "Responsavel", "Dia_Vencimento"))
 if not df_fixas.empty:
     df_fixas['Dia_Vencimento'] = pd.to_numeric(df_fixas['Dia_Vencimento'], errors='coerce').fillna(10).astype(int)
 
-df_goal = get_df("Metas", ["Meta_CAD", "Data_Viagem", "Poupanca_Mensal"])
+df_goal = get_df("Metas", ("Meta_CAD", "Data_Viagem", "Poupanca_Mensal"))
 if df_goal.empty:
     df_goal = pd.DataFrame([{"Meta_CAD": 20000.0, "Data_Viagem": "2026-07-01", "Poupanca_Mensal": 1000.0}])
     save_df("Metas", df_goal)
@@ -194,6 +195,8 @@ else:
     df_goal['Poupanca_Mensal'] = pd.to_numeric(df_goal['Poupanca_Mensal'], errors='coerce').fillna(1000.0).astype(float)
 config_canada = df_goal.iloc[0]
 
+# 🚀 TURBO 2: Cotação atualiza a cada 1 hora
+@st.cache_data(ttl=3600)
 def obter_cotacao_viva():
     try:
         ticker = yf.Ticker("CADBRL=X")
@@ -201,6 +204,8 @@ def obter_cotacao_viva():
         return hist['Close'].iloc[-1] if not hist.empty else 3.75
     except: return 3.75
 
+# 🚀 TURBO 3: Notícias atualizam a cada 1 hora
+@st.cache_data(ttl=3600)
 def buscar_noticias_canada():
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
@@ -261,7 +266,6 @@ with tabs[0]:
         st.plotly_chart(fig_trend, use_container_width=True)
 
 with tabs[1]:
-    # DIVIDIMOS A TELA DE LANÇAR EM DUAS COLUNAS
     col_lan1, col_lan2 = st.columns([1.2, 1])
     
     with col_lan1:
@@ -314,19 +318,19 @@ with tabs[1]:
                 
                 if pago:
                     status = "✅ **Pago**"
-                    cor = "#4CAF50" # Verde
+                    cor = "#4CAF50" 
                 elif hoje.day > dia_venc:
                     status = "🚨 **Atrasado**"
-                    cor = "#d13639" # Vermelho
+                    cor = "#d13639" 
                 elif hoje.day == dia_venc:
                     status = "⚠️ **Vence Hoje!**"
-                    cor = "#FF9800" # Laranja
+                    cor = "#FF9800" 
                 elif 0 < dias_restantes <= 5:
                     status = f"🟡 **Atenção ({dias_restantes} dias)**"
-                    cor = "#FDD835" # Amarelo
+                    cor = "#FDD835" 
                 else:
                     status = f"⏳ **Vence dia {dia_venc}**"
-                    cor = "#555" # Cinza
+                    cor = "#555" 
 
                 c1, c2 = st.columns([5,1])
                 with c1:
@@ -482,4 +486,3 @@ if noticias:
         """, unsafe_allow_html=True)
 else:
     st.info("Buscando notícias... Se não aparecerem, o site da emissora pode estar temporariamente indisponível.")
-
